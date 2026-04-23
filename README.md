@@ -1,4 +1,6 @@
-﻿# Toolnet Frontend
+﻿> written by codex
+
+# Toolnet Frontend
 
 SvelteKit + Lua(WASM) 기반의 노드 편집기 프로토타입입니다.
 
@@ -116,7 +118,7 @@ src/
 
 ## 남은 개선 과제
 
-1. 노드 편집/삭제/드래그에 대한 단위 테스트 및 E2E 테스트 추가
-2. `+page.svelte`의 컨텍스트 메뉴를 별도 컴포넌트로 분리
-3. 노드 실행 그래프 검증(순환 참조, 타입 불일치) 로직 추가
-4. Lua 실행을 Web Worker로 분리해 UI 프리징 위험 감소
+ - [ ] 노드 편집/삭제/드래그에 대한 단위 테스트 및 E2E 테스트 추가
+ - [ ] `+page.svelte`의 컨텍스트 메뉴를 별도 컴포넌트로 분리
+ - [ ] 노드 실행 그래프 검증(순환 참조, 타입 불일치) 로직 추가
+ - [x] Lua 실행을 Web Worker로 분리해 UI 프리징 위험 감소
