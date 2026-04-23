@@ -1,4 +1,4 @@
-import type { NodeModel } from "./types";
+import type { NodeModel } from "$lib/types";
 
 const DEFAULT_SPAWN_RANGE = 500;
 
@@ -18,6 +18,7 @@ export function createNodeFactory() {
       x,
       y,
       nodeType: "",
+      ioMap: {inputs: "", outputs: ""},
     };
   };
 }

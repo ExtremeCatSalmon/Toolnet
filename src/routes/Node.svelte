@@ -1,12 +1,8 @@
 <script lang="ts">
+  import { type NodeModel } from "$lib/types";
   import { onDestroy } from "svelte";
-  import { ioMap } from "./store";
 
-  interface Props {
-    x: number;
-    y: number;
-    z: number;
-    nodeType: string;
+  interface Props extends NodeModel {
     selected?: boolean;
     onselect?: () => void;
     oncontextmenu?: (e: MouseEvent) => void;
@@ -14,11 +10,10 @@
   }
 
   let {
-    x,
-    y,
-    z,
+    x, y, z,
     nodeType,
     selected = false,
+    ioMap,
     onselect,
     oncontextmenu,
     onmove,
@@ -63,7 +58,7 @@
 </script>
 
 <button
-  style:border={selected ? "2px solid white" : "1px solid white"}
+  style:border={selected ? "2px solid var(--kick-color)" : "1px solid var(--kick-color)"}
   {oncontextmenu}
   onmousedown={onMouseDown}
   style:left={`${x}px`}
@@ -72,14 +67,14 @@
   style:cursor={dragging ? "grabbing" : "grab"}
 >
   {nodeType}
-  <pre>inputs: {$ioMap[nodeType]?.inputs}</pre>
-  <pre>outputs: {$ioMap[nodeType]?.outputs}</pre>
+  <pre>inputs:<br>{ioMap.inputs}</pre>
+  <pre>outputs:<br>{ioMap.outputs}</pre>
 </button>
 
 <style>
   button {
     position: absolute;
-    color: white;
+    color: var(--text-color);
     width: 10rem;
     height: 11.68rem;
     background: #383838;

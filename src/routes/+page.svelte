@@ -1,41 +1,46 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
-  import { luaVM } from "$lib/lua/lua";
   import Inspector from "./Inspector.svelte";
-  import { setupLuaSync, initLuaModules } from "./lua.svelte";
   import Node from "./Node.svelte";
   import { createNodeFactory } from "./node-factory";
   import { nodes, selectedNodeId } from "./store";
+  import LuaWorker from "$lib/lua/worker?worker";
+  import { type NodeIO, type WorkerRequest, type WorkerResponse } from "$lib/types";
 
   const createNode = createNodeFactory();
-  const LUA_SMOKE_TEST = `
-    local add = require "nodes.add"
-    local sub = require "nodes.sub"
-    local divmod = require "nodes.divmod"
-    print(add(60, 7), sub(170, 0.1), divmod(67, 2))
-  `;
 
-  function runLuaSmokeTest() {
-    const status = luaVM.dostring(LUA_SMOKE_TEST);
-    if (status !== 0) {
-      console.error("Lua smoke test failed:", luaVM.get_error());
-    }
-  }
-
+  let ioMaps: Record<string, NodeIO> = $state({});
+  let nodeModules: Record<string, string> = $state({});
+  let worker: Worker;
+  let isWorkerReady = false;
   onMount(() => {
-    const cleanup = setupLuaSync();
-
-    void initLuaModules()
-      .then(() => {
-        runLuaSmokeTest();
-      })
-      .catch((error) => {
-        console.error("Failed to initialize Lua modules:", error);
-      });
+    worker = new LuaWorker();
+    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
+      switch (e.data.form) {
+        case "ready":
+          isWorkerReady = true;
+          worker.postMessage({ form: "io" } as WorkerRequest);
+          worker.postMessage({ form: "node_modules" } as WorkerRequest);
+          break;
+        case "io":
+          if (e.data.ok) {
+            ioMaps = e.data.io;
+          } else {
+            console.error("worker failed to load ioMap");
+          }
+          break;
+        case "node_modules":
+          if (e.data.ok) {
+            nodeModules = e.data.node_modules;
+          } else {
+            console.error("worker failed to load nodeModules");
+          }
+          break;
+      }
+    };
 
     return () => {
-      cleanup();
-      luaVM.close();
+      worker.postMessage({form:"shutdown"} as WorkerRequest);
     };
   });
 
@@ -46,7 +51,9 @@
   }
 
   function updateNodePosition(nodeId: number, x: number, y: number) {
-    $nodes = $nodes.map((node) => (node.id === nodeId ? { ...node, x, y } : node));
+    $nodes = $nodes.map((node) =>
+      node.id === nodeId ? { ...node, x, y } : node,
+    );
   }
 
   function focusNode(nodeId: number) {
@@ -56,7 +63,9 @@
     if (target.z < topZ) {
       const nextZ = topZ + 1;
       topZ = nextZ;
-      $nodes = $nodes.map((node) => (node.id === nodeId ? { ...node, z: nextZ } : node));
+      $nodes = $nodes.map((node) =>
+        node.id === nodeId ? { ...node, z: nextZ } : node,
+      );
     }
 
     $selectedNodeId = nodeId;
@@ -96,7 +105,11 @@
     };
   }
 
-  function openMenu(e: MouseEvent, menuType: MenuType, nodeId: number | null = null) {
+  function openMenu(
+    e: MouseEvent,
+    menuType: MenuType,
+    nodeId: number | null = null,
+  ) {
     e.preventDefault();
     e.stopPropagation();
     menuX = e.clientX;
@@ -122,7 +135,11 @@
 
 <div class="app">
   {#if showMenu}
-    <div class="context-menu" style:top={`${menuY}px`} style:left={`${menuX}px`}>
+    <div
+      class="context-menu"
+      style:top={`${menuY}px`}
+      style:left={`${menuX}px`}
+    >
       {#each Object.entries(getMenuOptions(currentMenu)) as [label, action]}
         <button onclick={action}>{label}</button>
       {/each}
@@ -145,9 +162,11 @@
   >
     {#each $nodes as node (node.id)}
       <Node
+        id={node.id}
         x={node.x}
         y={node.y}
         z={node.z}
+        ioMap={ioMaps[node.nodeType] ?? {}}
         nodeType={node.nodeType}
         selected={node.id === $selectedNodeId}
         oncontextmenu={(e) => openMenu(e, "node", node.id)}
@@ -162,7 +181,7 @@
   <aside class="sidebar">
     <h3>Node Props</h3>
     {#if $selectedNodeId !== null}
-      <Inspector nodeId={$selectedNodeId} />
+      <Inspector nodeId={$selectedNodeId} {nodeModules} />
     {:else}
       <p>No node selected</p>
     {/if}
@@ -173,7 +192,9 @@
   :global(body) {
     margin: 0;
     padding: 0;
-    color: white;
+    --kick-color: salmon;
+    --text-color: white;
+    color: var(--text-color);
   }
 
   .app {
@@ -197,7 +218,7 @@
   .context-menu {
     position: absolute;
     background: #383838;
-    border: 1px solid #ccc;
+    border: 1px solid var(--kick-color);
     box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5);
     z-index: 1000;
     min-width: 5rem;
