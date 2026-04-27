@@ -51,7 +51,7 @@
 3. Worker 메시지 필드명/응답 키 네이밍 통일
 4. 컨텍스트 메뉴를 별도 컴포넌트로 분리
 
-실행 방법은 [feedback/04-change-recipes.md](/c:/Users/master/Desktop/ExtremeCatSalmonProjects/toolnetfrontend/feedback/04-change-recipes.md)에 단계별로 정리했습니다.
+실행 방법은 [feedback/04-change-recipes.md](/feedback/04-change-recipes.md)에 단계별로 정리했습니다.
 
 ## 지금 상태에서 잘하고 있는 점
 

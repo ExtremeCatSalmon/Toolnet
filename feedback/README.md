@@ -20,6 +20,14 @@
 - 실제 변경 시 어떤 순서/방식으로 고치면 되는지 단계별 가이드
 - 파일 이동안, 인터페이스 초안, 커밋 단위 제안
 
+5. `feedback/05-worker-separation-followup.md`
+- Worker 분리 이후 후속 리뷰
+- 종료 보장, 에러 관측성, 기본값 안정성 보완 포인트
+
+6. `feedback/06-worker-followup-solutions.md`
+- Worker 후속 이슈별 구체적 해결안
+- 바로 적용 가능한 예시 코드 포함
+
 ## 빠른 결론
 
 - 현재 구조는 동작은 명확하지만 `+page.svelte`가 편집기의 여러 책임(Worker, 상태, 메뉴, 렌더)을 동시에 갖고 있어 읽기 난도가 빠르게 올라갈 수 있습니다.
