@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { type NodeModel } from "$lib/types";
+  import { type NodeIO, type NodeModel } from "$lib/types";
   import { onDestroy } from "svelte";
 
   interface Props extends NodeModel {
+    nodeIO: NodeIO;
     selected?: boolean;
     onselect?: () => void;
     oncontextmenu?: (e: MouseEvent) => void;
@@ -13,7 +14,7 @@
     x, y, z,
     nodeType,
     selected = false,
-    ioMap,
+    nodeIO,
     onselect,
     oncontextmenu,
     onmove,
@@ -67,8 +68,8 @@
   style:cursor={dragging ? "grabbing" : "grab"}
 >
   {nodeType}
-  <pre>inputs:<br>{ioMap.inputs}</pre>
-  <pre>outputs:<br>{ioMap.outputs}</pre>
+  <pre>inputs:<br>{nodeIO.inputs}</pre>
+  <pre>outputs:<br>{nodeIO.outputs}</pre>
 </button>
 
 <style>

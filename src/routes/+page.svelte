@@ -4,43 +4,41 @@
   import Node from "./Node.svelte";
   import { createNodeFactory } from "./node-factory";
   import { nodes, selectedNodeId } from "./store";
-  import LuaWorker from "$lib/lua/worker?worker";
-  import { type NodeIO, type WorkerRequest, type WorkerResponse } from "$lib/types";
+  import { type NodeIO } from "$lib/types";
+  import {
+    LuaWorkerClientImpl,
+    type LuaWorkerClient,
+  } from "$lib/lua/worker-client";
 
   const createNode = createNodeFactory();
 
-  let ioMaps: Record<string, NodeIO> = $state({});
+  let ioByNodeType: Record<string, NodeIO> = $state({});
   let nodeModules: Record<string, string> = $state({});
-  let worker: Worker;
-  let isWorkerReady = false;
-  onMount(() => {
-    worker = new LuaWorker();
-    worker.onmessage = (e: MessageEvent<WorkerResponse>) => {
-      switch (e.data.form) {
-        case "ready":
-          isWorkerReady = true;
-          worker.postMessage({ form: "io" } as WorkerRequest);
-          worker.postMessage({ form: "node_modules" } as WorkerRequest);
-          break;
-        case "io":
-          if (e.data.ok) {
-            ioMaps = e.data.io;
-          } else {
-            console.error("worker failed to load ioMap");
-          }
-          break;
-        case "node_modules":
-          if (e.data.ok) {
-            nodeModules = e.data.node_modules;
-          } else {
-            console.error("worker failed to load nodeModules");
-          }
-          break;
-      }
-    };
+  let luaWorkerClient: LuaWorkerClient = new LuaWorkerClientImpl();
 
-    return () => {
-      worker.postMessage({form:"shutdown"} as WorkerRequest);
+  onMount(() => {
+    luaWorkerClient.connect();
+    luaWorkerClient.subscribeIoMaps((newIoMaps) => {
+      ioByNodeType = newIoMaps;
+    });
+    luaWorkerClient.subscribeNodeModules((newNodeModules) => {
+      nodeModules = newNodeModules;
+    });
+    luaWorkerClient.onMessage((msg) => {
+      if (msg.type === "ready") {
+        luaWorkerClient.requestIo();
+        luaWorkerClient.requestNodeModules();
+        luaWorkerClient.run(`
+        local add = require "nodes.add"
+        print(add(60,7))
+        `);
+      }
+    });
+    luaWorkerClient.onError((err: ErrorEvent) => {
+      console.error("worker error:",err);
+    });
+    return function () {
+      luaWorkerClient.disconnect();
     };
   });
 
@@ -166,7 +164,7 @@
         x={node.x}
         y={node.y}
         z={node.z}
-        ioMap={ioMaps[node.nodeType] ?? {}}
+        nodeIO={ioByNodeType[node.nodeType] ?? { inputs: "", outputs: "" }}
         nodeType={node.nodeType}
         selected={node.id === $selectedNodeId}
         oncontextmenu={(e) => openMenu(e, "node", node.id)}
@@ -189,17 +187,12 @@
 </div>
 
 <style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    --kick-color: salmon;
-    --text-color: white;
-    color: var(--text-color);
-  }
-
   .app {
     display: flex;
     min-height: 100vh;
+    --kick-color: salmon;
+    --text-color: white;
+    color: var(--text-color);
   }
 
   .content {

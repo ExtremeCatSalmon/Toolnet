@@ -18,7 +18,6 @@ export function createNodeFactory() {
       x,
       y,
       nodeType: "",
-      ioMap: {inputs: "", outputs: ""},
     };
   };
 }

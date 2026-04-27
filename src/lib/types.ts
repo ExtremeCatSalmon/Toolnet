@@ -9,34 +9,39 @@ export interface NodeModel {
   y: number;
   z: number;
   nodeType: string;
-  ioMap: NodeIO;
 }
 
+export interface ReadyRequest {
+  type: "ready";
+}
 export interface ReadyResponse {
-  form: "ready";
+  type: "ready";
 }
 export interface IoRequest {
-  form: "io";
+  type: "io";
 }
 export interface IoResponse {
-  form: "io";
+  type: "io";
   io: Record<string, NodeIO>;
   ok: boolean;
 }
 export interface NodeModulesRequest {
-  form: "node_modules";
+  type: "nodeModules";
 }
 export interface NodeModulesResponse {
-  form: "node_modules";
-  node_modules: Record<string, string>;
+  type: "nodeModules";
+  nodeModules: Record<string, string>;
   ok: boolean;
 }
 export interface RunRequest {
-  form: "run";
+  type: "run";
   code: string;
 }
 export interface ShutdownRequest {
-  form: "shutdown";
+  type: "shutdown";
 }
-export type WorkerRequest  = RunRequest    | IoRequest  | NodeModulesRequest | ShutdownRequest;
-export type WorkerResponse = ReadyResponse | IoResponse | NodeModulesResponse;
+export interface ShutdownResponse {
+  type: "shutdown";
+}
+export type WorkerRequest  = ReadyRequest  | IoRequest  | NodeModulesRequest  | ShutdownRequest | RunRequest;
+export type WorkerResponse = ReadyResponse | IoResponse | NodeModulesResponse | ShutdownResponse;

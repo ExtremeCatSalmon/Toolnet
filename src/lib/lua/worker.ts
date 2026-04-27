@@ -73,16 +73,20 @@ luaVM.init();
 await initLuaModules().catch((err) => {
   console.error(err);
 });
-runLuaSmokeTest();
+// runLuaSmokeTest();
 
 function close() {
-  self.close();
   luaVM.close();
+  self.close();
 }
 
 let isReady = false;
+let readyInterval: ReturnType<typeof setInterval>;
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
-  switch (e.data.form) {
+  switch (e.data.type) {
+    case "ready":
+      clearInterval(readyInterval);
+      break;
     case "run":
       if (isReady) {
         const status = luaVM.dostring(e.data.code);
@@ -93,20 +97,20 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       break;
     case "io":
       if (luaModule.nodeModules) {
-        self.postMessage({ form: "io", io: ioMap, ok: true } as WorkerResponse);
+        self.postMessage({ type: "io", io: ioMap, ok: true } as WorkerResponse);
       } else {
-        self.postMessage({ form: "io", ok: false } as WorkerResponse);
+        self.postMessage({ type: "io", ok: false } as WorkerResponse);
       }
       break;
-    case "node_modules":
+    case "nodeModules":
       if (luaModule.nodeModules) {
         self.postMessage({
-          form: "node_modules",
-          node_modules: luaModule.nodeModules,
+          type: "nodeModules",
+          nodeModules: luaModule.nodeModules,
           ok: true,
         } as WorkerResponse);
       } else {
-        self.postMessage({ form: "node_modules", ok: false } as WorkerResponse);
+        self.postMessage({ type: "nodeModules", ok: false } as WorkerResponse);
       }
       break;
     case "shutdown":
@@ -115,5 +119,9 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   }
 };
 
-self.postMessage({ form: "ready" } as WorkerResponse);
+
+self.postMessage({ type: "ready" } as WorkerResponse);
+readyInterval = setInterval(() => {
+  self.postMessage({ type: "ready" } as WorkerResponse);
+},1000);
 isReady = true;
