@@ -1,29 +1,7 @@
-import { luaModule, luaVM, moduleIoPtrToString } from "$lib/lua/lua";
-import type { NodeIO, WorkerRequest, WorkerResponse } from "$lib/types";
+import { luaVM } from "$lib/lua/lua";
+import type { RunResponse, WorkerRequest, WorkerResponse } from "$lib/types";
 
-const stdNodes = ["add", "sub", "divmod"] as const;
-
-function nodeIoFromNodeModuleMap(
-  nodeModuleMap: Record<string, string>,
-): Record<string, NodeIO> {
-  const result: Record<string, NodeIO> = {};
-
-  for (const moduleName of Object.keys(nodeModuleMap)) {
-    result[moduleName] = { inputs: "", outputs: "" };
-
-    try {
-      luaVM.get_module_inputs(moduleName);
-      result[moduleName].inputs = moduleIoPtrToString(luaVM.get_io_items());
-
-      luaVM.get_module_outputs(moduleName);
-      result[moduleName].outputs = moduleIoPtrToString(luaVM.get_io_items());
-    } catch (error) {
-      console.error(`Failed to sync module IO for ${moduleName}:`, error);
-    }
-  }
-
-  return result;
-}
+const stdNodes = ["add", "sub", "divmod","number"] as const;
 
 async function fetchLuaSource(path: string): Promise<string> {
   const response = await fetch(path);
@@ -34,7 +12,6 @@ async function fetchLuaSource(path: string): Promise<string> {
   return response.text();
 }
 
-let ioMap: Record<string, NodeIO> = {};
 async function initLuaModules() {
   const [nodeLuaCode, ...moduleSources] = await Promise.all([
     fetchLuaSource("/lua/node.lua"),
@@ -43,16 +20,23 @@ async function initLuaModules() {
     ),
   ]);
 
-  luaModule.modules = { ...luaModule.modules, node: nodeLuaCode };
+  let luaModules = {node: nodeLuaCode};
 
   const stdNodeModules: Record<string, string> = {};
   stdNodes.forEach((moduleName, index) => {
     stdNodeModules[`nodes.${moduleName}`] = moduleSources[index];
   });
 
-  luaModule.nodeModules = { ...luaModule.nodeModules, ...stdNodeModules };
+  luaModules = {...luaModules, ...stdNodeModules};
 
-  ioMap = nodeIoFromNodeModuleMap(luaModule.nodeModules);
+  Object.entries(luaModules).forEach(([k,v]) => {
+    let code = `
+      package.preload['${k}'] = function()
+      ${v}
+      end
+      `;
+    luaVM.dostring(code);
+  });
 }
 
 const LUA_SMOKE_TEST = `
@@ -63,9 +47,11 @@ const LUA_SMOKE_TEST = `
   `;
 
 function runLuaSmokeTest() {
-  const status = luaVM.dostring(LUA_SMOKE_TEST);
-  if (status !== 0) {
-    console.error("Lua smoke test failed:", luaVM.get_error());
+  const ret = luaVM.dostring(LUA_SMOKE_TEST);
+  if (ret instanceof Error) {
+    console.error("test failed");
+  } else {
+    console.log("test succeeded");
   }
 }
 
@@ -73,7 +59,7 @@ luaVM.init();
 await initLuaModules().catch((err) => {
   console.error(err);
 });
-// runLuaSmokeTest();
+runLuaSmokeTest();
 
 function close() {
   luaVM.close();
@@ -85,35 +71,17 @@ let readyInterval: ReturnType<typeof setInterval>;
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   switch (e.data.type) {
     case "ready":
+      console.log("worker ready");
       clearInterval(readyInterval);
       break;
     case "run":
       if (isReady) {
-        const status = luaVM.dostring(e.data.code);
-        if (status !== 0) {
-          console.error("Lua smoke test failed:", luaVM.get_error());
-        }
-      }
-      break;
-    case "io":
-      if (luaModule.nodeModules) {
-        self.postMessage({ type: "io", io: ioMap, ok: true } as WorkerResponse);
-      } else {
-        self.postMessage({ type: "io", ok: false } as WorkerResponse);
-      }
-      break;
-    case "nodeModules":
-      if (luaModule.nodeModules) {
-        self.postMessage({
-          type: "nodeModules",
-          nodeModules: luaModule.nodeModules,
-          ok: true,
-        } as WorkerResponse);
-      } else {
-        self.postMessage({ type: "nodeModules", ok: false } as WorkerResponse);
+        const ret = luaVM.dostring(e.data.code);
+        self.postMessage({ type: "run", ok: !(ret instanceof Error), return: ret, uuid: e.data.uuid } as RunResponse);
       }
       break;
     case "shutdown":
+      console.log("shuting down the worker...");
       close();
       break;
   }

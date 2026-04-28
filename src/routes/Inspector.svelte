@@ -3,7 +3,7 @@
 
   interface Props {
     nodeId: number;
-    nodeModules: Record<string,string>;
+    nodeModules: string[];
   }
   const { nodeId, nodeModules }: Props = $props();
 
@@ -22,7 +22,7 @@
     node type:
     <select value={selectedNode.nodeType} onchange={updateNodeType}>
       <option value="">not selected</option>
-      {#each Object.entries(nodeModules) as [moduleName]}
+      {#each nodeModules as moduleName}
         <option value={moduleName}>{moduleName}</option>
       {/each}
     </select>

@@ -1,8 +1,11 @@
 <script lang="ts">
-  import { type NodeIO, type NodeModel } from "$lib/types";
+  import { type NodeIO } from "$lib/types";
   import { onDestroy } from "svelte";
 
-  interface Props extends NodeModel {
+  interface Props {
+    x: number;
+    y: number;
+    z: number;
     nodeIO: NodeIO;
     selected?: boolean;
     onselect?: () => void;
@@ -11,8 +14,9 @@
   }
 
   let {
-    x, y, z,
-    nodeType,
+    x,
+    y,
+    z,
     selected = false,
     nodeIO,
     onselect,

@@ -13,29 +13,37 @@
   const createNode = createNodeFactory();
 
   let ioByNodeType: Record<string, NodeIO> = $state({});
-  let nodeModules: Record<string, string> = $state({});
+  // let nodeModules: Record<string, string> = $state({});
   let luaWorkerClient: LuaWorkerClient = new LuaWorkerClientImpl();
 
   onMount(() => {
     luaWorkerClient.connect();
-    luaWorkerClient.subscribeIoMaps((newIoMaps) => {
-      ioByNodeType = newIoMaps;
-    });
-    luaWorkerClient.subscribeNodeModules((newNodeModules) => {
-      nodeModules = newNodeModules;
-    });
     luaWorkerClient.onMessage((msg) => {
       if (msg.type === "ready") {
-        luaWorkerClient.requestIo();
-        luaWorkerClient.requestNodeModules();
-        luaWorkerClient.run(`
-        local add = require "nodes.add"
-        print(add(60,7))
-        `);
+        luaWorkerClient
+          .run(
+            `
+        local names = {}
+        for key,value in pairs(package.preload) do
+          if string.find(key,"^nodes.") then
+            names[key] = {}
+            names[key]['inputs'] = value().inputs
+            names[key]['outputs'] = value().outputs
+          end
+        end
+        return names
+        `,
+          )
+          .then((ret) => {
+            ioByNodeType = ret[0];
+          })
+          .catch((err) => {
+            console.error("failed to load node modules:", err);
+          });
       }
     });
     luaWorkerClient.onError((err: ErrorEvent) => {
-      console.error("worker error:",err);
+      console.error("worker error:", err);
     });
     return function () {
       luaWorkerClient.disconnect();
@@ -179,7 +187,10 @@
   <aside class="sidebar">
     <h3>Node Props</h3>
     {#if $selectedNodeId !== null}
-      <Inspector nodeId={$selectedNodeId} {nodeModules} />
+      <Inspector
+        nodeId={$selectedNodeId}
+        nodeModules={Object.keys(ioByNodeType).sort()}
+      />
     {:else}
       <p>No node selected</p>
     {/if}

@@ -1,5 +1,6 @@
 import LuaWorker from "$lib/lua/worker?worker";
 import type { NodeIO, WorkerRequest, WorkerResponse } from "$lib/types";
+import { TypedPromise } from "$lib/types";
 
 const SHUTDOWN_FALLBACK_MS = 300;
 
@@ -13,11 +14,7 @@ export type OnErrorCallback = (err: ErrorEvent) => void;
 export interface LuaWorkerClient {
   connect(): void;
   disconnect(): void;
-  requestIo(): void;
-  requestNodeModules(): void;
-  run(code: string): void;
-  subscribeIoMaps(cb: IoMapsSubscriberCallback): () => void;
-  subscribeNodeModules(cb: NodeModulesSubscriberCallback): () => void;
+  run(code: string): Promise<any[]>;
   onMessage(cb: OnMessageCallback): () => void;
   onError(cb: OnErrorCallback): () => void;
 }
@@ -26,14 +23,10 @@ export class LuaWorkerClientImpl implements LuaWorkerClient {
   worker: Worker | null;
   isShutdown: boolean;
   shutdownFallbackTimer: ReturnType<typeof setTimeout> | null;
-  ioMapsSubscribers: IoMapsSubscriberCallback[];
-  nodeModulesSubscribers: NodeModulesSubscriberCallback[];
   onMessageCallbacks: OnMessageCallback[];
   onErrorCallbacks: OnErrorCallback[];
   constructor() {
     this.worker = null;
-    this.ioMapsSubscribers = [];
-    this.nodeModulesSubscribers = [];
     this.onErrorCallbacks = [];
     this.onMessageCallbacks = [];
     this.isShutdown = false;
@@ -77,22 +70,6 @@ export class LuaWorkerClientImpl implements LuaWorkerClient {
         case "ready":
           this.worker.postMessage({ type: "ready" } as WorkerRequest);
           break;
-        case "io":
-          if (e.data.ok) {
-            let ioMaps = e.data.io;
-            this.ioMapsSubscribers.forEach((cb) => cb(ioMaps));
-          } else {
-            console.error("worker failed to load ioMap");
-          }
-          break;
-        case "nodeModules":
-          if (e.data.ok) {
-            let nodeModules = e.data.nodeModules;
-            this.nodeModulesSubscribers.forEach((cb) => cb(nodeModules));
-          } else {
-            console.error("worker failed to load nodeModules");
-          }
-          break;
       }
     };
     this.worker.onerror = (e: ErrorEvent) => {
@@ -107,8 +84,6 @@ export class LuaWorkerClientImpl implements LuaWorkerClient {
     this.isShutdown = true;
     this.worker.onmessage = null;
     this.worker.onerror = null;
-    this.ioMapsSubscribers = [];
-    this.nodeModulesSubscribers = [];
     this.onMessageCallbacks = [];
     this.onErrorCallbacks = [];
 
@@ -139,34 +114,29 @@ export class LuaWorkerClientImpl implements LuaWorkerClient {
       self.onErrorCallbacks = self.onErrorCallbacks.filter((cb2) => cb2 !== cb);
     };
   }
-  requestIo(): void {
-    if (!this.worker) return;
-    this.worker.postMessage({ type: "io" } as WorkerRequest);
-  }
-  requestNodeModules(): void {
-    if (!this.worker) return;
-    this.worker.postMessage({ type: "nodeModules" } as WorkerRequest);
-  }
-  run(code: string): void {
-    if (!this.worker) return;
-    this.worker.postMessage({ type: "run", code } as WorkerRequest);
-  }
-  subscribeIoMaps(cb: IoMapsSubscriberCallback): () => void {
-    let self = this;
-    self.ioMapsSubscribers.push(cb);
-    return function () {
-      self.ioMapsSubscribers = self.ioMapsSubscribers.filter(
-        (sub) => sub !== cb,
-      );
-    };
-  }
-  subscribeNodeModules(cb: NodeModulesSubscriberCallback): () => void {
-    let self = this;
-    self.nodeModulesSubscribers.push(cb);
-    return function () {
-      self.nodeModulesSubscribers = self.nodeModulesSubscribers.filter(
-        (sub) => sub !== cb,
-      );
-    };
+  run(code: string): Promise<any[]> {
+    return TypedPromise<any[],Error>((resolve, reject) => {
+      if (!this.worker) {
+        reject(new Error("worker does not initialized"));
+        return;
+      }
+      const uuid = crypto.randomUUID();
+      this.worker.postMessage({ type: "run", uuid, code } as WorkerRequest);
+      let clear: () => void;
+      clear = this.onMessage(function(msg: WorkerResponse) {
+        if (msg.type === "run" && msg.uuid === uuid) {
+          if (msg.return instanceof Error) {
+            reject(msg.return);
+          } else {
+            resolve(msg.return);
+          }
+          clear();
+        }
+      });
+      setTimeout(()=>{
+        reject(new Error("request timed out"));
+        clear()
+      },5000);
+    });
   }
 }

@@ -17,25 +17,16 @@ export interface ReadyRequest {
 export interface ReadyResponse {
   type: "ready";
 }
-export interface IoRequest {
-  type: "io";
-}
-export interface IoResponse {
-  type: "io";
-  io: Record<string, NodeIO>;
-  ok: boolean;
-}
-export interface NodeModulesRequest {
-  type: "nodeModules";
-}
-export interface NodeModulesResponse {
-  type: "nodeModules";
-  nodeModules: Record<string, string>;
-  ok: boolean;
-}
 export interface RunRequest {
   type: "run";
+  uuid: string;
   code: string;
+}
+export interface RunResponse {
+  type: "run";
+  uuid: string;
+  ok: boolean;
+  return: any[] | Error;
 }
 export interface ShutdownRequest {
   type: "shutdown";
@@ -43,5 +34,14 @@ export interface ShutdownRequest {
 export interface ShutdownResponse {
   type: "shutdown";
 }
-export type WorkerRequest  = ReadyRequest  | IoRequest  | NodeModulesRequest  | ShutdownRequest | RunRequest;
-export type WorkerResponse = ReadyResponse | IoResponse | NodeModulesResponse | ShutdownResponse;
+export type WorkerRequest  = ReadyRequest  | ShutdownRequest  | RunRequest;
+export type WorkerResponse = ReadyResponse | ShutdownResponse | RunResponse;
+
+export function TypedPromise<T,R>(
+  executor: (
+    resolve: (value: T) => void,
+    reject: (value: R) => void,
+  ) => void
+): Promise<T> {
+  return new Promise(executor);
+}
