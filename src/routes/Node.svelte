@@ -2,13 +2,18 @@
   import { type NodeIO } from "$lib/types";
   import { onDestroy } from "svelte";
 
+  let container: HTMLElement;
+
   interface Props {
     x: number;
     y: number;
     z: number;
     nodeIO: NodeIO;
     selected?: boolean;
-    ports?: {inputs: Record<string,{x: number, y: number}>, outputs: Record<string,{x: number, y: number}>};
+    ports?: {
+      inputs: Record<string, { x: number; y: number }>;
+      outputs: Record<string, { x: number; y: number }>;
+    };
     onselect?: () => void;
     oncontextmenu?: (e: MouseEvent) => void;
     onmove?: (nextX: number, nextY: number, new_ports: typeof ports) => void;
@@ -21,7 +26,7 @@
     y,
     z,
     selected = false,
-    ports = {inputs:{},outputs:{}},
+    ports = { inputs: {}, outputs: {} },
     nodeIO,
     onselect,
     oncontextmenu,
@@ -46,8 +51,8 @@
     if (port) {
       const portType = port.getAttribute("data-port");
       const rect = port.getBoundingClientRect();
-      rect.x+=rect.width/2;
-      rect.y+=rect.height/2;
+      rect.x += rect.width / 2;
+      rect.y += rect.height / 2;
       if (portType === "input") {
         oninputportclick?.(port.getAttribute("data-port-name") || "", rect);
       } else {
@@ -66,18 +71,25 @@
     }
   }
 
+  // TODO: line 동기화 제대로 안되는거 해결
   function onMouseMove(event: MouseEvent) {
     if (!dragging) return;
-    const new_ports: typeof ports = {inputs:{},outputs:{}};
-    document.querySelectorAll("[data-port]").forEach(n => {
+    const new_ports: typeof ports = { inputs: {}, outputs: {} };
+    Object.keys(ports.inputs).forEach((port_name) => {
+      const n = container.querySelector(`[data-port-name=${port_name}][data-port=input]`);
+      if (!n) return;
       const rect = n.getBoundingClientRect();
-      rect.x+=rect.width/2;
-      rect.y+=rect.height/2;
-      if (n.getAttribute("data-port")==="input") {
-        new_ports.inputs[n.getAttribute("data-port-name") || ""] = rect;
-      } else {
-        new_ports.outputs[n.getAttribute("data-port-name") || ""] = rect;
-      }
+      rect.x += rect.width / 2;
+      rect.y += rect.height / 2;
+      new_ports.inputs[port_name] = rect;
+    });
+    Object.keys(ports.outputs).forEach((port_name) => {
+      const n = container.querySelector(`[data-port-name=${port_name}][data-port=output]`);
+      if (!n) return;
+      const rect = n.getBoundingClientRect();
+      rect.x += rect.width / 2;
+      rect.y += rect.height / 2;
+      new_ports.outputs[port_name] = rect;
     });
     onmove?.(event.clientX - offsetX, event.clientY - offsetY, new_ports);
   }
@@ -93,6 +105,7 @@
 </script>
 
 <button
+  bind:this={container}
   style:box-shadow={selected
     ? "0 0 0 2px var(--kick-color)"
     : "0 0 0 1px var(--kick-color)"}

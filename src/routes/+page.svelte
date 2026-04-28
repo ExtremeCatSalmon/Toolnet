@@ -56,9 +56,9 @@
     $nodes = [...$nodes, { ...createNode(x, y), z: ++topZ }];
   }
 
-  function updateNodePosition(nodeId: number, x: number, y: number) {
+  function updateNodePosition(nodeId: number, x: number, y: number, ports: any) {
     $nodes = $nodes.map((node) =>
-      node.id === nodeId ? { ...node, x, y } : node,
+      node.id === nodeId ? { ...node, x, y, ports } : node,
     );
   }
 
@@ -202,8 +202,7 @@
           nextY: number,
           new_ports: typeof node.ports,
         ) => {
-          node.ports = new_ports;
-          updateNodePosition(node.id, nextX, nextY);
+          updateNodePosition(node.id, nextX, nextY, new_ports);
         }}
         onselect={() => {
           focusNode(node.id);
