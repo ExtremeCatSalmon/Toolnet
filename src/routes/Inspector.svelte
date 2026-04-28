@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { nodes } from "./store";
+  import { nodes } from "./store.svelte";
 
   interface Props {
     nodeId: number;
@@ -7,12 +7,16 @@
   }
   const { nodeId, nodeModules }: Props = $props();
 
-  const selectedNode = $derived($nodes.find((node) => node.id === nodeId));
+  const selectedNode = $derived(nodes.find((node) => node.id === nodeId));
 
   function updateNodeType(event: Event) {
     const nextType = (event.currentTarget as HTMLSelectElement).value;
-    $nodes = $nodes.map((node) =>
-      node.id === nodeId ? { ...node, nodeType: nextType } : node,
+    nodes.splice(
+      0,
+      nodes.length,
+      ...nodes.map((node) =>
+        node.id === nodeId ? { ...node, nodeType: nextType } : node,
+      ),
     );
   }
 </script>

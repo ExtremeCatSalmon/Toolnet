@@ -10,6 +10,9 @@
     z: number;
     nodeIO: NodeIO;
     selected?: boolean;
+    port_selected?: boolean;
+    selected_input_port?: string;
+    selected_output_port?: string;
     ports?: {
       inputs: Record<string, { x: number; y: number }>;
       outputs: Record<string, { x: number; y: number }>;
@@ -27,6 +30,9 @@
     z,
     selected = false,
     ports = { inputs: {}, outputs: {} },
+    port_selected,
+    selected_input_port,
+    selected_output_port,
     nodeIO,
     onselect,
     oncontextmenu,
@@ -102,6 +108,9 @@
   onDestroy(() => {
     detachDragListeners();
   });
+  $effect(() => {
+    console.log(port_selected,selected_input_port,selected_output_port);
+  });
 </script>
 
 <button
@@ -126,6 +135,7 @@
         data-port-name={k}
         class="dot"
         style="transform: translate(-50%,0%)"
+        style:background-color={port_selected&&selected_input_port===k ? "var(--kick-color)" : "white"}
       ></div>
       <div class="label">{k}</div>
     </div>
@@ -141,6 +151,7 @@
         data-port-name={k}
         class="dot"
         style="transform: translate(50%,0%)"
+        style:background-color={(port_selected&&selected_output_port===k) ? "var(--kick-color)" : "white"}
       ></div>
     </div>
   {/each}
