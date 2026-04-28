@@ -1,41 +1,52 @@
 ﻿<script lang="ts">
   import { onMount } from "svelte";
-  import { luaVM } from "$lib/lua/lua";
   import Inspector from "./Inspector.svelte";
-  import { setupLuaSync, initLuaModules } from "./lua.svelte";
   import Node from "./Node.svelte";
   import { createNodeFactory } from "./node-factory";
   import { nodes, selectedNodeId } from "./store";
+  import { type NodeIO } from "$lib/types";
+  import {
+    LuaWorkerClientImpl,
+    type LuaWorkerClient,
+  } from "$lib/lua/worker-client";
 
   const createNode = createNodeFactory();
-  const LUA_SMOKE_TEST = `
-    local add = require "nodes.add"
-    local sub = require "nodes.sub"
-    local divmod = require "nodes.divmod"
-    print(add(60, 7), sub(170, 0.1), divmod(67, 2))
-  `;
 
-  function runLuaSmokeTest() {
-    const status = luaVM.dostring(LUA_SMOKE_TEST);
-    if (status !== 0) {
-      console.error("Lua smoke test failed:", luaVM.get_error());
-    }
-  }
+  let ioByNodeType: Record<string, NodeIO> = $state({});
+  // let nodeModules: Record<string, string> = $state({});
+  let luaWorkerClient: LuaWorkerClient = new LuaWorkerClientImpl();
 
   onMount(() => {
-    const cleanup = setupLuaSync();
-
-    void initLuaModules()
-      .then(() => {
-        runLuaSmokeTest();
-      })
-      .catch((error) => {
-        console.error("Failed to initialize Lua modules:", error);
-      });
-
-    return () => {
-      cleanup();
-      luaVM.close();
+    luaWorkerClient.connect();
+    luaWorkerClient.onMessage((msg) => {
+      if (msg.type === "ready") {
+        luaWorkerClient
+          .run(
+            `
+        local names = {}
+        for key,value in pairs(package.preload) do
+          if string.find(key,"^nodes.") then
+            names[key] = {}
+            names[key]['inputs'] = value().inputs
+            names[key]['outputs'] = value().outputs
+          end
+        end
+        return names
+        `,
+          )
+          .then((ret) => {
+            ioByNodeType = ret[0];
+          })
+          .catch((err) => {
+            console.error("failed to load node modules:", err);
+          });
+      }
+    });
+    luaWorkerClient.onError((err: ErrorEvent) => {
+      console.error("worker error:", err);
+    });
+    return function () {
+      luaWorkerClient.disconnect();
     };
   });
 
@@ -46,7 +57,9 @@
   }
 
   function updateNodePosition(nodeId: number, x: number, y: number) {
-    $nodes = $nodes.map((node) => (node.id === nodeId ? { ...node, x, y } : node));
+    $nodes = $nodes.map((node) =>
+      node.id === nodeId ? { ...node, x, y } : node,
+    );
   }
 
   function focusNode(nodeId: number) {
@@ -56,7 +69,9 @@
     if (target.z < topZ) {
       const nextZ = topZ + 1;
       topZ = nextZ;
-      $nodes = $nodes.map((node) => (node.id === nodeId ? { ...node, z: nextZ } : node));
+      $nodes = $nodes.map((node) =>
+        node.id === nodeId ? { ...node, z: nextZ } : node,
+      );
     }
 
     $selectedNodeId = nodeId;
@@ -96,7 +111,11 @@
     };
   }
 
-  function openMenu(e: MouseEvent, menuType: MenuType, nodeId: number | null = null) {
+  function openMenu(
+    e: MouseEvent,
+    menuType: MenuType,
+    nodeId: number | null = null,
+  ) {
     e.preventDefault();
     e.stopPropagation();
     menuX = e.clientX;
@@ -122,7 +141,11 @@
 
 <div class="app">
   {#if showMenu}
-    <div class="context-menu" style:top={`${menuY}px`} style:left={`${menuX}px`}>
+    <div
+      class="context-menu"
+      style:top={`${menuY}px`}
+      style:left={`${menuX}px`}
+    >
       {#each Object.entries(getMenuOptions(currentMenu)) as [label, action]}
         <button onclick={action}>{label}</button>
       {/each}
@@ -145,9 +168,11 @@
   >
     {#each $nodes as node (node.id)}
       <Node
+        id={node.id}
         x={node.x}
         y={node.y}
         z={node.z}
+        nodeIO={ioByNodeType[node.nodeType] ?? { inputs: "", outputs: "" }}
         nodeType={node.nodeType}
         selected={node.id === $selectedNodeId}
         oncontextmenu={(e) => openMenu(e, "node", node.id)}
@@ -162,7 +187,10 @@
   <aside class="sidebar">
     <h3>Node Props</h3>
     {#if $selectedNodeId !== null}
-      <Inspector nodeId={$selectedNodeId} />
+      <Inspector
+        nodeId={$selectedNodeId}
+        nodeModules={Object.keys(ioByNodeType).sort()}
+      />
     {:else}
       <p>No node selected</p>
     {/if}
@@ -170,15 +198,12 @@
 </div>
 
 <style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    color: white;
-  }
-
   .app {
     display: flex;
     min-height: 100vh;
+    --kick-color: salmon;
+    --text-color: white;
+    color: var(--text-color);
   }
 
   .content {
@@ -197,7 +222,7 @@
   .context-menu {
     position: absolute;
     background: #383838;
-    border: 1px solid #ccc;
+    border: 1px solid var(--kick-color);
     box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5);
     z-index: 1000;
     min-width: 5rem;

@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { nodes, nodeModules } from "./store";
+  import { nodes } from "./store";
 
   interface Props {
     nodeId: number;
+    nodeModules: string[];
   }
-  const { nodeId }: Props = $props();
+  const { nodeId, nodeModules }: Props = $props();
 
   const selectedNode = $derived($nodes.find((node) => node.id === nodeId));
 
@@ -21,7 +22,7 @@
     node type:
     <select value={selectedNode.nodeType} onchange={updateNodeType}>
       <option value="">not selected</option>
-      {#each Object.entries($nodeModules) as [moduleName]}
+      {#each nodeModules as moduleName}
         <option value={moduleName}>{moduleName}</option>
       {/each}
     </select>
