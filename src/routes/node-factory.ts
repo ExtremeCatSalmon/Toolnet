@@ -18,6 +18,7 @@ export function createNodeFactory() {
       x,
       y,
       nodeType: "",
+      ports: {inputs:{}, outputs:{}},
     };
   };
 }

@@ -3,8 +3,8 @@
   import Inspector from "./Inspector.svelte";
   import Node from "./Node.svelte";
   import { createNodeFactory } from "./node-factory";
-  import { nodes, selectedNodeId } from "./store";
-  import { type NodeIO } from "$lib/types";
+  import { lines, nodes, selectedNodeId } from "./store";
+  import { type NodeIO, type PortConnection } from "$lib/types";
   import {
     LuaWorkerClientImpl,
     type LuaWorkerClient,
@@ -78,6 +78,7 @@
   }
 
   function deleteNode(nodeId: number) {
+    $lines = $lines.filter((line) => line.first_id !== nodeId && line.second_id !== nodeId);
     $nodes = $nodes.filter((node) => node.id !== nodeId);
     if ($selectedNodeId === nodeId) {
       $selectedNodeId = null;
@@ -133,6 +134,8 @@
     showMenu = false;
     menuNodeId = null;
   }
+
+  let conn1: PortConnection | null = null;
 </script>
 
 <svelte:head>
@@ -154,7 +157,26 @@
 
   <svg
     style="pointer-events: none; inset: 0; width: 100%; height: 100%; position: absolute;"
-  />
+  >
+    {#each $lines as line}
+      <line
+        x1={$nodes.find((n) => n.id === line?.first_id)?.ports.inputs[
+          line.first_port
+        ]?.x}
+        y1={$nodes.find((n) => n.id === line?.first_id)?.ports.inputs[
+          line.first_port
+        ]?.y}
+        x2={$nodes.find((n) => n.id === line?.second_id)?.ports.outputs[
+          line.second_port
+        ]?.x}
+        y2={$nodes.find((n) => n.id === line?.second_id)?.ports.outputs[
+          line.second_port
+        ]?.y}
+        stroke="white"
+        stroke-width="5"
+      />
+    {/each}
+  </svg>
 
   <section
     role="button"
@@ -168,17 +190,55 @@
   >
     {#each $nodes as node (node.id)}
       <Node
-        id={node.id}
         x={node.x}
         y={node.y}
         z={node.z}
-        nodeIO={ioByNodeType[node.nodeType] ?? { inputs: "", outputs: "" }}
-        nodeType={node.nodeType}
+        ports={node.ports}
+        nodeIO={ioByNodeType[node.nodeType] || { inputs: {}, outputs: {} }}
         selected={node.id === $selectedNodeId}
-        oncontextmenu={(e) => openMenu(e, "node", node.id)}
-        onmove={(nextX, nextY) => updateNodePosition(node.id, nextX, nextY)}
+        oncontextmenu={(e: MouseEvent) => openMenu(e, "node", node.id)}
+        onmove={(
+          nextX: number,
+          nextY: number,
+          new_ports: typeof node.ports,
+        ) => {
+          node.ports = new_ports;
+          updateNodePosition(node.id, nextX, nextY);
+        }}
         onselect={() => {
           focusNode(node.id);
+        }}
+        oninputportclick={(port_name: string, port_rect: DOMRect) => {
+          if (!conn1)
+            conn1 = {
+              first_id: -1,
+              first_port: "",
+              second_id: -1,
+              second_port: "",
+            };
+          node.ports.inputs[port_name] = port_rect;
+          conn1.first_id = node.id;
+          conn1.first_port = port_name;
+          if (conn1.first_id > -1 && conn1.second_id > -1) {
+            $lines = [...$lines, conn1];
+            conn1 = null;
+          }
+        }}
+        onoutputportclick={(port_name: string, port_rect: DOMRect) => {
+          if (!conn1)
+            conn1 = {
+              first_id: -1,
+              first_port: "",
+              second_id: -1,
+              second_port: "",
+            };
+          node.ports.outputs[port_name] = port_rect;
+          conn1.second_id = node.id;
+          conn1.second_port = port_name;
+          if (conn1.first_id > -1 && conn1.second_id > -1) {
+            $lines = [...$lines, conn1];
+            conn1 = null;
+          }
         }}
       />
     {/each}

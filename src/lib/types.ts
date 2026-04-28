@@ -9,6 +9,17 @@ export interface NodeModel {
   y: number;
   z: number;
   nodeType: string;
+  ports: {
+    inputs: Record<string,{x:number,y:number}>,
+    outputs: Record<string,{x:number,y:number}>,
+  }
+}
+
+export interface PortConnection {
+  first_id: number;
+  first_port: string;
+  second_id: number;
+  second_port: string;
 }
 
 export interface ReadyRequest {

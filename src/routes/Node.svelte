@@ -8,9 +8,12 @@
     z: number;
     nodeIO: NodeIO;
     selected?: boolean;
+    ports?: {inputs: Record<string,{x: number, y: number}>, outputs: Record<string,{x: number, y: number}>};
     onselect?: () => void;
     oncontextmenu?: (e: MouseEvent) => void;
-    onmove?: (nextX: number, nextY: number) => void;
+    onmove?: (nextX: number, nextY: number, new_ports: typeof ports) => void;
+    oninputportclick?: (port_name: string, port_rect: DOMRect) => void;
+    onoutputportclick?: (port_name: string, port_rect: DOMRect) => void;
   }
 
   let {
@@ -18,10 +21,13 @@
     y,
     z,
     selected = false,
+    ports = {inputs:{},outputs:{}},
     nodeIO,
     onselect,
     oncontextmenu,
     onmove,
+    oninputportclick,
+    onoutputportclick,
   }: Props = $props();
 
   let dragging = $state(false);
@@ -34,22 +40,46 @@
   }
 
   function onMouseDown(event: MouseEvent) {
+    const target = event.target as HTMLElement;
+    const port = target.closest("[data-port]");
     if (event.button !== 0) return;
+    if (port) {
+      const portType = port.getAttribute("data-port");
+      const rect = port.getBoundingClientRect();
+      rect.x+=rect.width/2;
+      rect.y+=rect.height/2;
+      if (portType === "input") {
+        oninputportclick?.(port.getAttribute("data-port-name") || "", rect);
+      } else {
+        onoutputportclick?.(port.getAttribute("data-port-name") || "", rect);
+      }
+    } else {
+      onselect?.();
+      event.stopPropagation();
 
-    onselect?.();
-    event.stopPropagation();
+      dragging = true;
+      offsetX = event.clientX - x;
+      offsetY = event.clientY - y;
 
-    dragging = true;
-    offsetX = event.clientX - x;
-    offsetY = event.clientY - y;
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", onMouseUp);
+    }
   }
 
   function onMouseMove(event: MouseEvent) {
     if (!dragging) return;
-    onmove?.(event.clientX - offsetX, event.clientY - offsetY);
+    const new_ports: typeof ports = {inputs:{},outputs:{}};
+    document.querySelectorAll("[data-port]").forEach(n => {
+      const rect = n.getBoundingClientRect();
+      rect.x+=rect.width/2;
+      rect.y+=rect.height/2;
+      if (n.getAttribute("data-port")==="input") {
+        new_ports.inputs[n.getAttribute("data-port-name") || ""] = rect;
+      } else {
+        new_ports.outputs[n.getAttribute("data-port-name") || ""] = rect;
+      }
+    });
+    onmove?.(event.clientX - offsetX, event.clientY - offsetY, new_ports);
   }
 
   function onMouseUp() {
@@ -63,30 +93,80 @@
 </script>
 
 <button
-  style:border={selected ? "2px solid var(--kick-color)" : "1px solid var(--kick-color)"}
+  style:box-shadow={selected
+    ? "0 0 0 2px var(--kick-color)"
+    : "0 0 0 1px var(--kick-color)"}
   {oncontextmenu}
   onmousedown={onMouseDown}
   style:left={`${x}px`}
   style:top={`${y}px`}
   style:z-index={z}
-  style:cursor={dragging ? "grabbing" : "grab"}
+  // style:cursor={dragging ? "grabbing" : "grab"}
 >
-  {nodeType}
-  <pre>inputs:<br>{nodeIO.inputs}</pre>
-  <pre>outputs:<br>{nodeIO.outputs}</pre>
+  {#each Object.entries(nodeIO.inputs).sort() as [k, v]}
+    <div
+      style="flex-grow: 1; width: 100%; text-align: left; align-content: center;"
+      title={v}
+    >
+      <div
+        data-port="input"
+        data-port-name={k}
+        class="dot"
+        style="transform: translate(-50%,0%)"
+      ></div>
+      <div class="label">{k}</div>
+    </div>
+  {/each}
+  {#each Object.entries(nodeIO.outputs).sort() as [k, v]}
+    <div
+      style="flex-grow: 1; width: 100%; text-align: right; align-content: center;"
+      title={v}
+    >
+      <div class="label">{k}</div>
+      <div
+        data-port="output"
+        data-port-name={k}
+        class="dot"
+        style="transform: translate(50%,0%)"
+      ></div>
+    </div>
+  {/each}
 </button>
 
 <style>
   button {
+    border: none;
     position: absolute;
     color: var(--text-color);
     width: 10rem;
-    height: 11.68rem;
+    min-height: 11.68rem;
     background: #383838;
-    padding: 0.5rem;
+    padding: 0px;
+    margin: 0px;
 
     -webkit-user-select: none;
     -ms-user-select: none;
     user-select: none;
+
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+
+    box-sizing: border-box;
+  }
+  .dot {
+    cursor: pointer;
+    width: 0.75rem;
+    height: 0.75rem;
+    background-color: white;
+    vertical-align: middle;
+    display: inline-block;
+    box-sizing: content-box;
+  }
+  .label {
+    cursor: pointer;
+    display: inline-block;
+    vertical-align: middle;
+    line-height: 0.5rem;
   }
 </style>
