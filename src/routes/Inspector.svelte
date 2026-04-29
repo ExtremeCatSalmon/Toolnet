@@ -1,23 +1,33 @@
 <script lang="ts">
-  import { nodes } from "./store.svelte";
+  import { makePortId } from "$lib/port";
+  import type { NodeIO } from "$lib/types";
+  import { nodes, portMap } from "./store.svelte";
 
   interface Props {
     nodeId: number;
     nodeModules: string[];
+    io: NodeIO;
   }
-  const { nodeId, nodeModules }: Props = $props();
+  const { nodeId, nodeModules, io }: Props = $props();
 
-  const selectedNode = $derived(nodes.find((node) => node.id === nodeId));
+  const selectedNode = $derived(nodes[nodeId]);
 
   function updateNodeType(event: Event) {
     const nextType = (event.currentTarget as HTMLSelectElement).value;
-    nodes.splice(
-      0,
-      nodes.length,
-      ...nodes.map((node) =>
-        node.id === nodeId ? { ...node, nodeType: nextType } : node,
-      ),
-    );
+    // if (io) {
+    //   (["input", "output"] as ("input" | "output")[]).forEach((kind) => {
+    //     // @ts-ignore
+    //     Object.keys(io[kind + "s"]).forEach((portName: string) => {
+    //       const portId = makePortId(nodeId, kind, portName);
+    //       portMap[portId].linked.forEach((pid) => {
+    //         portMap[pid].linked.delete(portId);
+    //         portMap[pid] = { ...portMap[pid] };
+    //       });
+    //       delete portMap[portId];
+    //     });
+    //   });
+    // }
+    nodes[nodeId] = {...nodes[nodeId], nodeType: nextType};
   }
 </script>
 

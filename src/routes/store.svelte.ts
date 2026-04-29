@@ -1,7 +1,8 @@
-import type { NodeModel, PortConnection } from "$lib/types";
+import type { NodeModel, Port } from "$lib/types";
 
-export const nodes = $state<NodeModel[]>([]);
-export const lines = $state<PortConnection[]>([]);
+export const nodes = $state<Record<number,NodeModel>>({});
+export const portMap = $state<Record<string, Port>>({});
+export const nodeIdCounter = $state<{ count: number }>({ count: 0 });
 export const selection = $state<{
   nodeId: number | null;
 }>({

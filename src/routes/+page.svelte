@@ -1,14 +1,15 @@
 ﻿<script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import Inspector from "./Inspector.svelte";
   import Node from "./Node.svelte";
   import { createNodeFactory } from "./node-factory";
-  import { nodes, lines, selection } from "./store.svelte";
-  import { type NodeIO, type PortConnection } from "$lib/types";
+  import { nodes, selection, portMap, nodeIdCounter } from "./store.svelte";
+  import { type NodeIO } from "$lib/types";
   import {
     LuaWorkerClientImpl,
     type LuaWorkerClient,
   } from "$lib/lua/worker-client";
+  import { makePortId, parsePortId } from "$lib/port";
 
   const createNode = createNodeFactory();
 
@@ -53,49 +54,42 @@
   let topZ = $state(0);
 
   function createAndAppendNode(x?: number, y?: number) {
-    nodes.push({ ...createNode(x, y), z: ++topZ });
+    const new_node = createNode(x, y);
+    new_node.z = ++topZ;
+    nodes[nodeIdCounter.count++] = new_node;
   }
 
-  function updateNodePosition(
-    nodeId: number,
-    x: number,
-    y: number,
-    ports: any,
-  ) {
-    const idx = nodes.findIndex((node) => node.id === nodeId);
-    if (idx > -1) {
-      nodes[idx].x = x;
-      nodes[idx].y = y;
-      nodes[idx].ports = ports;
+  function updateNodePosition(nodeId: number, x: number, y: number) {
+    if (nodeId in nodes) {
+      nodes[nodeId].x = x;
+      nodes[nodeId].y = y;
     }
   }
 
   function focusNode(nodeId: number) {
-    const target = nodes.findIndex((node) => node.id === nodeId);
-    if (target < 0) return;
-
-    if (nodes[target].z < topZ) {
-      const nextZ = topZ + 1;
-      topZ = nextZ;
-      nodes[target] = { ...nodes[target], z: nextZ };
-    }
-
+    if (!(nodeId in nodes)) return;
+    // if (nodes[target].z < topZ) {
+    // }
+    nodes[nodeId].z = ++topZ;
     selection.nodeId = nodeId;
   }
 
   function deleteNode(nodeId: number) {
-    lines.splice(
-      0,
-      lines.length,
-      ...lines.filter(
-        (line) => line.first_id !== nodeId && line.second_id !== nodeId,
-      ),
-    );
-    nodes.splice(
-      0,
-      nodes.length,
-      ...nodes.filter((node) => node.id !== nodeId),
-    );
+    const io = ioByNodeType[nodes[nodeId].nodeType];
+    if (io) {
+      (["input", "output"] as ("input" | "output")[]).forEach((kind) => {
+        // @ts-ignore
+        Object.keys(io[kind + "s"]).forEach((portName: string) => {
+          const portId = makePortId(nodeId, kind, portName);
+          portMap[portId].linked.forEach((pid) => {
+            portMap[pid].linked.delete(portId);
+            portMap[pid] = { ...portMap[pid] };
+          });
+          delete portMap[portId];
+        });
+      });
+    }
+    delete nodes[nodeId];
     if (selection.nodeId === nodeId) {
       selection.nodeId = null;
     }
@@ -151,14 +145,42 @@
     menuNodeId = null;
   }
 
-  let conn1 = $state<PortConnection | null>(null);
-  let selected_port_node: number | undefined = $derived((conn1?.first_id || 0) > -1 ? conn1?.first_id : (conn1?.second_id || 0) > -1 ? conn1?.second_id : -1);
-  let selected_input_port: string | undefined = $derived(!!conn1?.first_port ? conn1?.first_port : undefined);
-  let selected_output_port: string | undefined = $derived(!!conn1?.second_port ? conn1?.second_port : undefined);
-    $effect(() => {
-      console.log($state.snapshot(conn1),conn1?.second_id,selected_port_node);
-      console.log(conn1?.first_id || 0, conn1?.second_id || 0);
+  let selected_port: string | undefined = $state();
+
+  function onPortClick(portId: string) {
+    if (!selected_port) {
+      selected_port = portId;
+      return;
+    }
+    const port1 = parsePortId(selected_port);
+    const port2 = parsePortId(portId);
+    if (port1.nodeId === port2.nodeId || port1.kind === port2.kind) {
+      selected_port = portId;
+      return;
+    }
+    selected_port = undefined;
+    if (
+      portMap[port1.id].linked.has(port2.id) ||
+      portMap[port2.id].linked.has(port1.id)
+    ) {
+      portMap[port1.id].linked.delete(port2.id);
+      portMap[port2.id].linked.delete(port1.id);
+      portMap[port1.id] = { ...portMap[port1.id] };
+      portMap[port2.id] = { ...portMap[port2.id] };
+      return;
+    }
+    portMap[port1.id].linked.add(port2.id);
+    portMap[port2.id].linked.add(port1.id);
+    portMap[port1.id] = { ...portMap[port1.id] };
+    portMap[port2.id] = { ...portMap[port2.id] };
+  }
+  let c = $state(0);
+  $effect(() => {
+    untrack(() => {
+      c++;
     });
+    console.log("changed", $state.snapshot(portMap));
+  });
 </script>
 
 <svelte:head>
@@ -178,10 +200,23 @@
     </div>
   {/if}
 
+  <h1>{c}</h1>
   <svg
     style="pointer-events: none; inset: 0; width: 100%; height: 100%; position: absolute;"
   >
-    {#each lines as line}
+    {#each Object.entries(portMap) as [portId, port] (portId)}
+      {#each port.linked as pid (pid)}
+        <line
+          x1={port.x}
+          y1={port.y}
+          x2={portMap[pid].x}
+          y2={portMap[pid].y}
+          stroke="white"
+          stroke-width="5"
+        />
+      {/each}
+    {/each}
+    <!-- {#each lines as line}
       <line
         x1={nodes.find((n) => n.id === line?.first_id)?.ports.inputs[
           line.first_port
@@ -198,7 +233,7 @@
         stroke="white"
         stroke-width="5"
       />
-    {/each}
+    {/each} -->
   </svg>
 
   <section
@@ -207,86 +242,31 @@
     class="content"
     onmousedown={() => {
       selection.nodeId = null;
+      selected_port = undefined;
       closeMenu();
     }}
     oncontextmenu={(e) => openMenu(e, "canvas")}
   >
-    {#each nodes as node (node.id)}
+    {#each Object.entries(nodes) as [_nodeId, node] (_nodeId)}
+      {@const nodeId = parseInt(_nodeId)}
       <Node
+        {node}
+        id={nodeId}
         x={node.x}
         y={node.y}
         z={node.z}
-        port_selected={selected_port_node==node.id}
-        {selected_input_port}
-        {selected_output_port}
-        ports={node.ports}
+        {selected_port}
         nodeIO={ioByNodeType[node.nodeType] || { inputs: {}, outputs: {} }}
-        selected={node.id === selection.nodeId}
-        oncontextmenu={(e: MouseEvent) => openMenu(e, "node", node.id)}
-        onmove={(
-          nextX: number,
-          nextY: number,
-          new_ports: typeof node.ports,
-        ) => {
-          updateNodePosition(node.id, nextX, nextY, new_ports);
+        selected={nodeId === selection.nodeId}
+        oncontextmenu={(e: MouseEvent) => openMenu(e, "node", nodeId)}
+        onmove={(nextX: number, nextY: number) => {
+          updateNodePosition(nodeId, nextX, nextY);
         }}
         onselect={() => {
-          focusNode(node.id);
+          focusNode(nodeId);
         }}
-        oninputportclick={(port_name: string, port_rect: DOMRect) => {
-          if (!conn1)
-            conn1 = {
-              first_id: -1,
-              first_port: "",
-              second_id: -1,
-              second_port: "",
-            };
-          node.ports.inputs[port_name] = port_rect;
-          conn1.first_id = node.id;
-          conn1.first_port = port_name;
-          if (conn1.first_id === conn1.second_id) {
-            conn1.second_id = -1;
-            conn1.second_port = "";
-          }
-          if (conn1.first_id > -1 && conn1.second_id > -1) {
-            const already = lines.findIndex(
-              (conn) => JSON.stringify(conn) === JSON.stringify(conn1),
-            );
-            if (already > -1) {
-              lines.splice(already, 1);
-            } else {
-              lines.push(conn1);
-            }
-            conn1 = null;
-          }
-        }}
-        onoutputportclick={(port_name: string, port_rect: DOMRect) => {
-          if (!conn1)
-            conn1 = {
-              first_id: -1,
-              first_port: "",
-              second_id: -1,
-              second_port: "",
-            };
-          node.ports.outputs[port_name] = port_rect;
-          conn1.second_id = node.id;
-          conn1.second_port = port_name;
-          if (conn1.second_id === conn1.first_id) {
-            conn1.first_id = -1;
-            conn1.first_port = "";
-          }
-          if (conn1.first_id > -1 && conn1.second_id > -1) {
-            const already = lines.findIndex(
-              (conn) => JSON.stringify(conn) === JSON.stringify(conn1),
-            );
-            if (already > -1) {
-              lines.splice(already, 1);
-            } else {
-              lines.push(conn1);
-            }
-            conn1 = null;
-          }
-        }}
+        oninputportclick={onPortClick}
+        onoutputportclick={onPortClick}
       />
     {/each}
   </section>
@@ -295,6 +275,7 @@
     <h3>Node Props</h3>
     {#if selection.nodeId !== null}
       <Inspector
+        io={ioByNodeType[nodes[selection.nodeId].nodeType] || {inputs: {}, outputs: {}}}
         nodeId={selection.nodeId}
         nodeModules={Object.keys(ioByNodeType).sort()}
       />

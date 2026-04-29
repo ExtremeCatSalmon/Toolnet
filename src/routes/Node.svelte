@@ -1,44 +1,44 @@
 <script lang="ts">
-  import { type NodeIO } from "$lib/types";
+  import { type NodeIO, type NodeModel } from "$lib/types";
   import { onDestroy } from "svelte";
+  import type { Attachment } from "svelte/attachments";
+  import { portMap } from "./store.svelte";
+  import { makePortId } from "$lib/port";
 
   let container: HTMLElement;
 
   interface Props {
+    node: NodeModel;
+    id: number;
     x: number;
     y: number;
     z: number;
     nodeIO: NodeIO;
     selected?: boolean;
-    port_selected?: boolean;
-    selected_input_port?: string;
-    selected_output_port?: string;
-    ports?: {
-      inputs: Record<string, { x: number; y: number }>;
-      outputs: Record<string, { x: number; y: number }>;
-    };
+    selected_port?: string;
     onselect?: () => void;
     oncontextmenu?: (e: MouseEvent) => void;
-    onmove?: (nextX: number, nextY: number, new_ports: typeof ports) => void;
-    oninputportclick?: (port_name: string, port_rect: DOMRect) => void;
-    onoutputportclick?: (port_name: string, port_rect: DOMRect) => void;
+    onmove?: (nextX: number, nextY: number) => void;
+    oninputportclick?: (portId: string) => void;
+    onoutputportclick?: (portId: string) => void;
+    onupdate?: (ports: string[]) => void;
   }
 
   let {
+    node,
+    id,
     x,
     y,
     z,
     selected = false,
-    ports = { inputs: {}, outputs: {} },
-    port_selected,
-    selected_input_port,
-    selected_output_port,
+    selected_port,
     nodeIO,
     onselect,
     oncontextmenu,
     onmove,
     oninputportclick,
     onoutputportclick,
+    onupdate,
   }: Props = $props();
 
   let dragging = $state(false);
@@ -50,54 +50,61 @@
     window.removeEventListener("mouseup", onMouseUp);
   }
 
+  function centerPointFromElement(el: Element): {x: number, y: number} {
+    const rect = el.getBoundingClientRect();
+    return {
+      x: rect.x + rect.width / 2,
+      y: rect.y + rect.width / 2,
+    };
+  }
+  // function collectPortPoints(
+  //   kind: "input" | "output",
+  // ): Record<string, Port> {
+  //   const result: Record<string, Port> = {};
+  //   let source = kind === "input" ? ports.inputs : ports.outputs;
+  //   source ??= {};
+
+  //   Object.keys(source).forEach((portName) => {
+  //     const el = container.querySelector(
+  //       `[data-port-name=${portName}][data-port=${kind}]`,
+  //     );
+  //     if (!el) return;
+  //     result[portName].pos = centerPointFromElement(el);
+  //   });
+
+  //   return result;
+  // }
+
   function onMouseDown(event: MouseEvent) {
-    const target = event.target as HTMLElement;
-    const port = target.closest("[data-port]");
     if (event.button !== 0) return;
-    if (port) {
-      const portType = port.getAttribute("data-port");
-      const rect = port.getBoundingClientRect();
-      rect.x += rect.width / 2;
-      rect.y += rect.height / 2;
-      if (portType === "input") {
-        oninputportclick?.(port.getAttribute("data-port-name") || "", rect);
-      } else {
-        onoutputportclick?.(port.getAttribute("data-port-name") || "", rect);
-      }
-    } else {
-      onselect?.();
-      event.stopPropagation();
+    onselect?.();
+    event.stopPropagation();
 
-      dragging = true;
-      offsetX = event.clientX - x;
-      offsetY = event.clientY - y;
+    dragging = true;
+    offsetX = event.clientX - x;
+    offsetY = event.clientY - y;
 
-      window.addEventListener("mousemove", onMouseMove);
-      window.addEventListener("mouseup", onMouseUp);
-    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
   }
 
+function updatePortPosition(portId: string) {
+  const port = portMap[portId];
+  if (!port?.el) return;
+
+  const rect = port.el.getBoundingClientRect();
+
+  port.x = rect.x + rect.width / 2;
+  port.y = rect.y + rect.height / 2;
+}
   // TODO: line 동기화 제대로 안되는거 해결
   function onMouseMove(event: MouseEvent) {
     if (!dragging) return;
-    const new_ports: typeof ports = { inputs: {}, outputs: {} };
-    Object.keys(ports.inputs).forEach((port_name) => {
-      const n = container.querySelector(`[data-port-name=${port_name}][data-port=input]`);
-      if (!n) return;
-      const rect = n.getBoundingClientRect();
-      rect.x += rect.width / 2;
-      rect.y += rect.height / 2;
-      new_ports.inputs[port_name] = rect;
+    Object.keys(portMap).forEach(portId => {
+      console.log(portId);
+      updatePortPosition(portId);
     });
-    Object.keys(ports.outputs).forEach((port_name) => {
-      const n = container.querySelector(`[data-port-name=${port_name}][data-port=output]`);
-      if (!n) return;
-      const rect = n.getBoundingClientRect();
-      rect.x += rect.width / 2;
-      rect.y += rect.height / 2;
-      new_ports.outputs[port_name] = rect;
-    });
-    onmove?.(event.clientX - offsetX, event.clientY - offsetY, new_ports);
+    onmove?.(event.clientX - offsetX, event.clientY - offsetY);
   }
 
   function onMouseUp() {
@@ -108,9 +115,33 @@
   onDestroy(() => {
     detachDragListeners();
   });
-  $effect(() => {
-    console.log(port_selected,selected_input_port,selected_output_port);
-  });
+
+  function registerPort(
+    kind: "input" | "output",
+    portName: string,
+  ): Attachment {
+    const portId = makePortId(id, kind, portName);
+    return (el) => {
+      const div = el as HTMLElement;
+      div.onmousedown = (e: MouseEvent) => {
+        e.stopPropagation();
+        if (kind === "input") {
+          oninputportclick?.(portId);
+        } else {
+          onoutputportclick?.(portId);
+        }
+      };
+      portMap[portId] = {
+        el: el,
+        ...centerPointFromElement(el),
+        linked: new Set<string>(),
+        node,
+      };
+      return () => {
+        console.log("cleaning");
+      };
+    };
+  }
 </script>
 
 <button
@@ -131,11 +162,12 @@
       title={v}
     >
       <div
-        data-port="input"
-        data-port-name={k}
+        {@attach registerPort("input", k)}
         class="dot"
         style="transform: translate(-50%,0%)"
-        style:background-color={port_selected&&selected_input_port===k ? "var(--kick-color)" : "white"}
+        style:background-color={selected_port === makePortId(id, "input", k)
+          ? "var(--kick-color)"
+          : "white"}
       ></div>
       <div class="label">{k}</div>
     </div>
@@ -147,11 +179,12 @@
     >
       <div class="label">{k}</div>
       <div
-        data-port="output"
-        data-port-name={k}
+        {@attach registerPort("output", k)}
         class="dot"
         style="transform: translate(50%,0%)"
-        style:background-color={(port_selected&&selected_output_port===k) ? "var(--kick-color)" : "white"}
+        style:background-color={selected_port === makePortId(id, "output", k)
+          ? "var(--kick-color)"
+          : "white"}
       ></div>
     </div>
   {/each}
@@ -182,10 +215,12 @@
     cursor: pointer;
     width: 0.75rem;
     height: 0.75rem;
-    background-color: white;
     vertical-align: middle;
     display: inline-block;
     box-sizing: content-box;
+  }
+  .dot:active {
+    background-color: var(--kick-color) !important;
   }
   .label {
     cursor: pointer;
