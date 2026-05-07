@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { nodes } from "./store";
+  import { nodes } from "./store.svelte";
 
   interface Props {
     nodeId: number;

@@ -3,8 +3,8 @@
   import Inspector from "./Inspector.svelte";
   import Node from "./Node.svelte";
   import { createNodeFactory } from "./node-factory";
-  import { nodes, selectedNodeId } from "./store";
-  import { type NodeIO } from "$lib/types";
+  import { nodeLinks, nodes, selectedNodeId } from "./store.svelte";
+  import type { NodeIO, Port, NodeLink, NodeTreeNode } from "$lib/types";
   import {
     LuaWorkerClientImpl,
     type LuaWorkerClient,
@@ -13,7 +13,7 @@
   const createNode = createNodeFactory();
 
   let ioByNodeType: Record<string, NodeIO> = $state({});
-  // let nodeModules: Record<string, string> = $state({});
+  const emptyNodeIO = { inputs: {}, outputs: {} };
   let luaWorkerClient: LuaWorkerClient = new LuaWorkerClientImpl();
 
   onMount(() => {
@@ -61,6 +61,14 @@
       node.id === nodeId ? { ...node, x, y } : node,
     );
   }
+  function updateNodePortPositions(
+    nodeId: number,
+    portPositions: Map<string, () => { x: number; y: number }>,
+  ) {
+    $nodes = $nodes.map((node) =>
+      node.id === nodeId ? { ...node, portPositions } : node,
+    );
+  }
 
   function focusNode(nodeId: number) {
     const target = $nodes.find((node) => node.id === nodeId);
@@ -77,7 +85,44 @@
     $selectedNodeId = nodeId;
   }
 
+  function makeTreeFrom(nodeId: number, output: string = ""): NodeTreeNode {
+    let treeRoot: NodeTreeNode = {
+      id: nodeId,
+      hm: output,
+      connectedNodesByInputPort: {},
+    };
+    nodeLinks.forEach((link) => {
+      if (link.nodes.includes(nodeId)) {
+        const idx = link.nodes.indexOf(nodeId);
+        if (link.ports[idx].type == "output") return;
+        treeRoot.connectedNodesByInputPort[link.ports[idx].name] = makeTreeFrom(link.nodes[1-idx],link.ports[idx].name);
+      }
+    });
+    return treeRoot;
+  }
+
+  function runNode(nodeId: number) {
+    console.log(makeTreeFrom(nodeId));
+    // let links = nodeLinks.filter(
+    //   (link) => link.node1Id === nodeId || link.node2Id === nodeId,
+    // );
+    // links.forEach((link) => {
+    //   if (link.node1Id === nodeId) {
+    //     if (link.port1.type === "input") {
+    //     }
+    //   } else {
+    //     if (link.port2.type === "input") {
+    //     }
+    //   }
+    // });
+  }
+
   function deleteNode(nodeId: number) {
+    nodeLinks.splice(
+      0,
+      nodeLinks.length,
+      ...nodeLinks.filter((link) => !link.nodes.includes(nodeId)),
+    );
     $nodes = $nodes.filter((node) => node.id !== nodeId);
     if ($selectedNodeId === nodeId) {
       $selectedNodeId = null;
@@ -103,6 +148,11 @@
     }
 
     return {
+      Run: () => {
+        if (menuNodeId === null) return;
+        runNode(menuNodeId);
+        closeMenu();
+      },
       "Delete Node": () => {
         if (menuNodeId === null) return;
         deleteNode(menuNodeId);
@@ -133,6 +183,42 @@
     showMenu = false;
     menuNodeId = null;
   }
+
+  let last_port_node_id = $state<number>(-1);
+  let last_port = $state<Port | undefined>();
+  $effect(() => {
+    console.log("AWESOME", $state.snapshot(nodeLinks));
+  });
+  function newLink(
+    node1Id: number,
+    port1: Port,
+    node2Id: number,
+    port2: Port,
+  ): NodeLink {
+    return { nodes: [node1Id, node2Id], ports: [port1, port2] };
+  }
+  function pushLink(link: NodeLink) {
+    nodeLinks.push(link);
+  }
+  function samePort(port1: Port, port2: Port) {
+    return port1.name === port2.name && port1.type === port2.type;
+  }
+  // true when equal.
+  function compareLink(link1: NodeLink, link2: NodeLink): boolean {
+    return (
+      (link1.nodes[0] === link2.nodes[0] &&
+        link1.nodes[1] === link2.nodes[1] &&
+        samePort(link1.ports[0], link2.ports[0]) &&
+        samePort(link1.ports[1], link2.ports[1])) ||
+      (link1.nodes[0] === link2.nodes[1] &&
+        link1.nodes[1] === link2.nodes[0] &&
+        samePort(link1.ports[0], link2.ports[1]) &&
+        samePort(link1.ports[1], link2.ports[0]))
+    );
+  }
+  function findLinkIdxFromNodeLinks(link: NodeLink): number {
+    return nodeLinks.findIndex((ln) => compareLink(ln, link));
+  }
 </script>
 
 <svelte:head>
@@ -154,7 +240,26 @@
 
   <svg
     style="pointer-events: none; inset: 0; width: 100%; height: 100%; position: absolute;"
-  />
+  >
+    {#each nodeLinks as link, linkIdx (linkIdx)}
+      {@const node1 = $nodes.find((n) => n.id === link.nodes[0])}
+      {@const node2 = $nodes.find((n) => n.id === link.nodes[1])}
+      {@const port1Pos = node1?.portPositions.get(
+        `${link.ports[0].type}:${link.ports[0].name}`,
+      )?.()}
+      {@const port2Pos = node2?.portPositions.get(
+        `${link.ports[1].type}:${link.ports[1].name}`,
+      )?.()}
+      <line
+        x1={port1Pos?.x}
+        y1={port1Pos?.y}
+        x2={port2Pos?.x}
+        y2={port2Pos?.y}
+        stroke="white"
+        stroke-width="5"
+      />
+    {/each}
+  </svg>
 
   <section
     role="button"
@@ -172,11 +277,47 @@
         x={node.x}
         y={node.y}
         z={node.z}
-        nodeIO={ioByNodeType[node.nodeType] ?? { inputs: "", outputs: "" }}
-        nodeType={node.nodeType}
+        portPositions={node.portPositions}
+        nodeIO={ioByNodeType[node.nodeType] ?? emptyNodeIO}
         selected={node.id === $selectedNodeId}
+        selectedPort={last_port_node_id === node.id
+          ? (last_port ?? { type: "input", name: "" })
+          : { type: "input", name: "" }}
         oncontextmenu={(e) => openMenu(e, "node", node.id)}
         onmove={(nextX, nextY) => updateNodePosition(node.id, nextX, nextY)}
+        onportupdate={(portPositions) =>
+          updateNodePortPositions(node.id, portPositions)}
+        onportselect={(port: Port) => {
+          console.log(node.id, port);
+          function fail() {
+            // failed to make link
+            last_port_node_id = node.id;
+            last_port = port;
+          }
+          function done() {
+            // succeeded to make link or did something
+            last_port_node_id = -1;
+            last_port = undefined;
+          }
+          if (last_port != undefined) {
+            if (last_port_node_id == node.id) return fail();
+            if (last_port.type == port.type) return fail();
+            const new_link = newLink(
+              node.id,
+              port,
+              last_port_node_id,
+              last_port,
+            );
+            const link_idx = findLinkIdxFromNodeLinks(new_link);
+            if (link_idx > -1) {
+              nodeLinks.splice(link_idx, 1);
+              return done();
+            }
+            pushLink(new_link);
+            return done();
+          }
+          fail();
+        }}
         onselect={() => {
           focusNode(node.id);
         }}
