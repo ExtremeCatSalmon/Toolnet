@@ -87,22 +87,52 @@
 
   function makeTreeFrom(nodeId: number, output: string = ""): NodeTreeNode {
     let treeRoot: NodeTreeNode = {
-      id: nodeId,
-      hm: output,
+      module_name: $nodes.find((n) => n.id === nodeId)?.nodeType ?? "",
+      output,
       connectedNodesByInputPort: {},
     };
     nodeLinks.forEach((link) => {
       if (link.nodes.includes(nodeId)) {
         const idx = link.nodes.indexOf(nodeId);
         if (link.ports[idx].type == "output") return;
-        treeRoot.connectedNodesByInputPort[link.ports[idx].name] = makeTreeFrom(link.nodes[1-idx],link.ports[idx].name);
+        treeRoot.connectedNodesByInputPort[link.ports[idx].name] = makeTreeFrom(
+          link.nodes[1 - idx],
+          link.ports[1 - idx].name,
+        );
       }
     });
     return treeRoot;
   }
 
+  async function runTree(tree: NodeTreeNode): Promise<string> {
+    let args: string[] = [];
+
+    for (const [input, childTree] of Object.entries(tree.connectedNodesByInputPort)) {
+      args.push(`${input}={JSON.parse(await runTree(childTree))[0][childTree.output]}`);
+      console.log("done");
+    }
+    console.log("args", args);
+
+    // replaceAll(/"/g,"")말고 for문으로 직접 lua table 생성
+    const code = `local mod = require "${tree.module_name}"
+    return mod(${JSON.stringify(args).replaceAll(/:/g,"=").replaceAll(/"/g,"")})
+    -- return mod.inputs, mod.outputs
+    `
+    console.log(code);
+    const data = await luaWorkerClient.run(code);
+    console.log(tree.module_name);
+    console.log(JSON.stringify(args).replaceAll(/:/g,"="));
+    console.log(JSON.stringify(data));
+    return JSON.stringify(data);
+  }
+
   function runNode(nodeId: number) {
-    console.log(makeTreeFrom(nodeId));
+    const christmas_tree = makeTreeFrom(nodeId);
+    console.log(christmas_tree);
+    runTree(christmas_tree).then(data => {
+      console.log(data);
+    });
+    // christmas_tree.
     // let links = nodeLinks.filter(
     //   (link) => link.node1Id === nodeId || link.node2Id === nodeId,
     // );

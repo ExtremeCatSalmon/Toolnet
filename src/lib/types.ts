@@ -13,8 +13,8 @@ export interface NodeModel {
 }
 
 export interface NodeTreeNode {
-  id: number;
-  hm: string;
+  module_name: string;
+  output: string;
   connectedNodesByInputPort: Record<string,NodeTreeNode>;
 }
 

@@ -4,7 +4,7 @@ M.inputs = {}
 M.outputs = { a="number" }
 
 function M:run(a,b)
-    return 67
+    return { a=67 }
 end
 
 return M

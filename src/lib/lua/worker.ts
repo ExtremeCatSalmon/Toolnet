@@ -43,7 +43,7 @@ const LUA_SMOKE_TEST = `
     local add = require "nodes.add"
     local sub = require "nodes.sub"
     local divmod = require "nodes.divmod"
-    print(add(60, 7), sub(170, 0.1), divmod(67, 2))
+    -- print(add({a=60, b=7}), sub({a=170, b=0.1}), divmod({number=67, divisor=2}))
   `;
 
 function runLuaSmokeTest() {

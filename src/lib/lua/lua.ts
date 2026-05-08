@@ -134,7 +134,7 @@ export const luaVM: LuaVM = {
     if (result.ok) {
       return Object.values(result.ret);
     } else {
-      console.error(result.ret[0]);
+      console.error(`in "${code}\n\n"`, result.ret[0]);
       return new Error(result.ret[0]);
     }
   },
