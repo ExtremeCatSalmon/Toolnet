@@ -1,6 +1,7 @@
 export interface NodeIO {
   inputs: Record<string,string>;
   outputs: Record<string,string>;
+  props: Record<string,string>;
 }
 
 export interface NodeModel {
@@ -10,11 +11,13 @@ export interface NodeModel {
   z: number;
   nodeType: string;
   portPositions: Map<string, () => { x: number; y: number }>;
+  props: Record<string,string>;
 }
 
 export interface NodeTreeNode {
   module_name: string;
   output: string;
+  props: Record<string, string>;
   connectedNodesByInputPort: Record<string,NodeTreeNode>;
 }
 

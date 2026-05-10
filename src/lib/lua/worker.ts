@@ -1,7 +1,7 @@
 import { luaVM } from "$lib/lua/lua";
 import type { RunResponse, WorkerRequest, WorkerResponse } from "$lib/types";
 
-const stdNodes = ["add", "sub", "divmod","number"] as const;
+const stdNodes = ["add", "sub", "divmod", "value", "print", "tuple", "join"] as const;
 
 async function fetchLuaSource(path: string): Promise<string> {
   const response = await fetch(path);
@@ -43,6 +43,7 @@ const LUA_SMOKE_TEST = `
     local add = require "nodes.add"
     local sub = require "nodes.sub"
     local divmod = require "nodes.divmod"
+    print(add({a=60, b=7}), sub({a=170, b=0.1}))
     -- print(add({a=60, b=7}), sub({a=170, b=0.1}), divmod({number=67, divisor=2}))
   `;
 

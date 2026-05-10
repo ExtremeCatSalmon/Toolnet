@@ -17,6 +17,7 @@ export function createNodeFactory() {
       x,
       y,
       nodeType: "",
+      props: {},
       portPositions: new Map<string, () => { x: number; y: number }>(),
     };
   };
